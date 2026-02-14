@@ -1,0 +1,868 @@
+const imprimirPDF = () => {
+    window.print();
+  };import React, { useState, useMemo } from 'react';
+import { 
+  BarChart, Bar, XAxis, YAxis, 
+  CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
+import { TrendingUp, TrendingDown, Eye, MousePointerClick, DollarSign, Target, Users, MessageCircle, ArrowUpCircle, ArrowDownCircle, Upload, Trash2, Download } from 'lucide-react';
+import Papa from 'papaparse';
+
+const ComparadorCampanasMeta = () => {
+  const [periodo1Data, setPeriodo1Data] = useState([]);
+  const [periodo2Data, setPeriodo2Data] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN' }).format(value);
+  };
+
+  const formatNumber = (value) => {
+    return new Intl.NumberFormat('es-MX').format(Math.round(value));
+  };
+
+  const formatPercent = (value) => {
+    return `${value}%`;
+  };
+
+  const calcularVariacion = (actual, anterior) => {
+    if (anterior === 0) return actual > 0 ? 100 : 0;
+    return ((actual - anterior) / anterior * 100).toFixed(1);
+  };
+
+  const procesarArchivo = (file, setPeriodo) => {
+    setLoading(true);
+    Papa.parse(file, {
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        const dataProcesada = results.data.map(row => ({
+          nombre: row['Nombre de la campaña'] || row.nombre || '',
+          visualizaciones: parseInt(row['Visualizaciones'] || row.visualizaciones || 0),
+          alcance: parseInt(row['Alcance'] || row.alcance || 0),
+          clicsEnlace: parseInt(row['Clics en el enlace'] || row.clicsEnlace || row.clics || 0),
+          tipoResultado: row['Tipo de resultado'] || row.tipoResultado || '',
+          resultados: parseInt(row['Resultados'] || row.resultados || 0),
+          nuevosContactos: parseInt(row['Nuevos contactos de mensajes'] || row.nuevosContactos || row.contactos || 0),
+          objetivo: row['Objetivo'] || row.objetivo || '',
+          costePorResultado: parseFloat(String(row['Coste por resultado'] || row.costePorResultado || 0).replace(/[$,]/g, '')),
+          importeGastado: parseFloat(String(row['Importe gastado (MXN)'] || row.importeGastado || row.gasto || 0).replace(/[$,]/g, '')),
+          inicioInforme: row['Inicio del informe'] || row.inicioInforme || '',
+          finInforme: row['Fin del informe'] || row.finInforme || ''
+        })).filter(d => d.nombre);
+        
+        setPeriodo(dataProcesada);
+        setLoading(false);
+      },
+      error: (error) => {
+        console.error('Error al procesar archivo:', error);
+        alert('Error al procesar el archivo. Asegúrate de que sea un CSV válido.');
+        setLoading(false);
+      }
+    });
+  };
+
+  const handleFileUpload = (event, periodo) => {
+    const file = event.target.files[0];
+    if (file) {
+      procesarArchivo(file, periodo === 1 ? setPeriodo1Data : setPeriodo2Data);
+    }
+  };
+
+  const limpiarDatos = (periodo) => {
+    if (periodo === 1) setPeriodo1Data([]);
+    else setPeriodo2Data([]);
+  };
+
+  const totalesPeriodo1 = useMemo(() => {
+    return periodo1Data.reduce((acc, c) => ({
+      visualizaciones: acc.visualizaciones + c.visualizaciones,
+      alcance: acc.alcance + c.alcance,
+      clics: acc.clics + c.clicsEnlace,
+      resultados: acc.resultados + c.resultados,
+      contactos: acc.contactos + c.nuevosContactos,
+      gasto: acc.gasto + c.importeGastado
+    }), { visualizaciones: 0, alcance: 0, clics: 0, resultados: 0, contactos: 0, gasto: 0 });
+  }, [periodo1Data]);
+
+  const totalesPeriodo2 = useMemo(() => {
+    return periodo2Data.reduce((acc, c) => ({
+      visualizaciones: acc.visualizaciones + c.visualizaciones,
+      alcance: acc.alcance + c.alcance,
+      clics: acc.clics + c.clicsEnlace,
+      resultados: acc.resultados + c.resultados,
+      contactos: acc.contactos + c.nuevosContactos,
+      gasto: acc.gasto + c.importeGastado
+    }), { visualizaciones: 0, alcance: 0, clics: 0, resultados: 0, contactos: 0, gasto: 0 });
+  }, [periodo2Data]);
+
+  const metricasP1 = useMemo(() => ({
+    ...totalesPeriodo1,
+    costePorResultado: totalesPeriodo1.resultados > 0 ? (totalesPeriodo1.gasto / totalesPeriodo1.resultados).toFixed(2) : 0,
+    ctr: totalesPeriodo1.visualizaciones > 0 ? ((totalesPeriodo1.clics / totalesPeriodo1.visualizaciones) * 100).toFixed(2) : 0,
+    tasaConversion: totalesPeriodo1.clics > 0 ? ((totalesPeriodo1.resultados / totalesPeriodo1.clics) * 100).toFixed(2) : 0
+  }), [totalesPeriodo1]);
+
+  const metricasP2 = useMemo(() => ({
+    ...totalesPeriodo2,
+    costePorResultado: totalesPeriodo2.resultados > 0 ? (totalesPeriodo2.gasto / totalesPeriodo2.resultados).toFixed(2) : 0,
+    ctr: totalesPeriodo2.visualizaciones > 0 ? ((totalesPeriodo2.clics / totalesPeriodo2.visualizaciones) * 100).toFixed(2) : 0,
+    tasaConversion: totalesPeriodo2.clics > 0 ? ((totalesPeriodo2.resultados / totalesPeriodo2.clics) * 100).toFixed(2) : 0
+  }), [totalesPeriodo2]);
+
+  const descargarReportePDF = () => {
+    try {
+      const contenidoHTML = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Reporte Campañas Meta Ads</title>
+  <style>
+    @page { margin: 2cm; }
+    body { font-family: Arial, sans-serif; margin: 20px; color: #333; line-height: 1.6; }
+    .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #3b82f6; padding-bottom: 20px; }
+    .header h1 { color: #3b82f6; margin: 0; font-size: 26px; }
+    table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 11px; }
+    th { background-color: #3b82f6; color: white; padding: 10px 8px; text-align: left; font-weight: bold; border: 1px solid #2563eb; }
+    td { padding: 8px; border: 1px solid #e5e7eb; }
+    tr:nth-child(even) { background-color: #f9fafb; }
+    .section { margin: 25px 0; page-break-inside: avoid; }
+    .section-title { background: #3b82f6; color: white; padding: 10px 15px; font-size: 16px; font-weight: bold; margin-bottom: 15px; border-radius: 5px; }
+    .text-right { text-align: right; }
+    .bold { font-weight: bold; }
+    .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
+    .summary-card { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 10px; text-align: center; }
+    .summary-card h3 { margin: 0 0 10px 0; font-size: 13px; opacity: 0.9; }
+    .summary-card .value { font-size: 32px; font-weight: bold; }
+    .chart-placeholder { background: #f3f4f6; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 40px; text-align: center; color: #64748b; margin: 20px 0; min-height: 200px; display: flex; align-items: center; justify-content: center; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin: 20px 0; }
+    .metric-box { background: white; border: 2px solid #e5e7eb; border-radius: 8px; padding: 15px; }
+    .metric-label { color: #6b7280; font-size: 12px; margin-bottom: 5px; }
+    .metric-value { font-size: 24px; font-weight: bold; color: #1f2937; }
+    .metric-change { font-size: 14px; margin-top: 5px; }
+    .positive { color: #10b981; }
+    .negative { color: #ef4444; }
+    .footer { margin-top: 40px; text-align: center; color: #6b7280; font-size: 11px; border-top: 1px solid #e5e7eb; padding-top: 15px; }
+    .page-break { page-break-after: always; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📊 REPORTE COMPARATIVO DE CAMPAÑAS META ADS</h1>
+    <p style="color: #6b7280; margin: 10px 0 0 0;">Generado el ${new Date().toLocaleString('es-MX', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })}</p>
+  </div>
+
+  <div class="section">
+    <div class="section-title">🎯 Resumen Ejecutivo</div>
+    <div class="summary-cards">
+      <div class="summary-card">
+        <h3>Cambio en Gasto</h3>
+        <div class="value">${parseFloat(calcularVariacion(totalesPeriodo2.gasto, totalesPeriodo1.gasto)) > 0 ? '+' : ''}${calcularVariacion(totalesPeriodo2.gasto, totalesPeriodo1.gasto)}%</div>
+      </div>
+      <div class="summary-card">
+        <h3>Cambio en Resultados</h3>
+        <div class="value">${parseFloat(calcularVariacion(totalesPeriodo2.resultados, totalesPeriodo1.resultados)) > 0 ? '+' : ''}${calcularVariacion(totalesPeriodo2.resultados, totalesPeriodo1.resultados)}%</div>
+      </div>
+      <div class="summary-card">
+        <h3>Cambio en Eficiencia (CPR)</h3>
+        <div class="value">${parseFloat(calcularVariacion(metricasP2.costePorResultado, metricasP1.costePorResultado)) > 0 ? '+' : ''}${calcularVariacion(metricasP2.costePorResultado, metricasP1.costePorResultado)}%</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📊 Métricas Principales - Comparación</div>
+    <div class="metrics-grid">
+      <div class="metric-box">
+        <div class="metric-label">💰 Gasto Total</div>
+        <div class="metric-value">${formatCurrency(totalesPeriodo1.gasto)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 1</div>
+        <div class="metric-value" style="margin-top: 10px;">${formatCurrency(totalesPeriodo2.gasto)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 2</div>
+        <div class="metric-change ${parseFloat(calcularVariacion(totalesPeriodo2.gasto, totalesPeriodo1.gasto)) > 0 ? 'positive' : 'negative'}">
+          ${calcularVariacion(totalesPeriodo2.gasto, totalesPeriodo1.gasto)}% de cambio
+        </div>
+      </div>
+      
+      <div class="metric-box">
+        <div class="metric-label">🎯 Resultados Totales</div>
+        <div class="metric-value">${totalesPeriodo1.resultados}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 1</div>
+        <div class="metric-value" style="margin-top: 10px;">${totalesPeriodo2.resultados}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 2</div>
+        <div class="metric-change ${parseFloat(calcularVariacion(totalesPeriodo2.resultados, totalesPeriodo1.resultados)) > 0 ? 'positive' : 'negative'}">
+          ${calcularVariacion(totalesPeriodo2.resultados, totalesPeriodo1.resultados)}% de cambio
+        </div>
+      </div>
+
+      <div class="metric-box">
+        <div class="metric-label">👁️ Visualizaciones</div>
+        <div class="metric-value">${formatNumber(totalesPeriodo1.visualizaciones)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 1</div>
+        <div class="metric-value" style="margin-top: 10px;">${formatNumber(totalesPeriodo2.visualizaciones)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 2</div>
+        <div class="metric-change ${parseFloat(calcularVariacion(totalesPeriodo2.visualizaciones, totalesPeriodo1.visualizaciones)) > 0 ? 'positive' : 'negative'}">
+          ${calcularVariacion(totalesPeriodo2.visualizaciones, totalesPeriodo1.visualizaciones)}% de cambio
+        </div>
+      </div>
+
+      <div class="metric-box">
+        <div class="metric-label">👥 Alcance</div>
+        <div class="metric-value">${formatNumber(totalesPeriodo1.alcance)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 1</div>
+        <div class="metric-value" style="margin-top: 10px;">${formatNumber(totalesPeriodo2.alcance)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 2</div>
+        <div class="metric-change ${parseFloat(calcularVariacion(totalesPeriodo2.alcance, totalesPeriodo1.alcance)) > 0 ? 'positive' : 'negative'}">
+          ${calcularVariacion(totalesPeriodo2.alcance, totalesPeriodo1.alcance)}% de cambio
+        </div>
+      </div>
+
+      <div class="metric-box">
+        <div class="metric-label">🖱️ Clics en Enlaces</div>
+        <div class="metric-value">${totalesPeriodo1.clics}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 1</div>
+        <div class="metric-value" style="margin-top: 10px;">${totalesPeriodo2.clics}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 2</div>
+        <div class="metric-change ${parseFloat(calcularVariacion(totalesPeriodo2.clics, totalesPeriodo1.clics)) > 0 ? 'positive' : 'negative'}">
+          ${calcularVariacion(totalesPeriodo2.clics, totalesPeriodo1.clics)}% de cambio
+        </div>
+      </div>
+
+      <div class="metric-box">
+        <div class="metric-label">📉 Coste por Resultado</div>
+        <div class="metric-value">${formatCurrency(metricasP1.costePorResultado)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 1</div>
+        <div class="metric-value" style="margin-top: 10px;">${formatCurrency(metricasP2.costePorResultado)}</div>
+        <div style="font-size: 11px; color: #6b7280;">Período 2</div>
+        <div class="metric-change ${parseFloat(calcularVariacion(metricasP2.costePorResultado, metricasP1.costePorResultado)) < 0 ? 'positive' : 'negative'}">
+          ${calcularVariacion(metricasP2.costePorResultado, metricasP1.costePorResultado)}% de cambio
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <div class="section">
+    <div class="section-title">📋 Detalle Período 1</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Campaña</th>
+          <th class="text-right">Visualiz.</th>
+          <th class="text-right">Alcance</th>
+          <th class="text-right">Clics</th>
+          <th class="text-right">Resultados</th>
+          <th class="text-right">Contactos</th>
+          <th class="text-right">CPR</th>
+          <th class="text-right">Gasto</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${periodo1Data.map(c => `
+          <tr>
+            <td class="bold">${c.nombre}</td>
+            <td class="text-right">${formatNumber(c.visualizaciones)}</td>
+            <td class="text-right">${formatNumber(c.alcance)}</td>
+            <td class="text-right">${c.clicsEnlace}</td>
+            <td class="text-right">${c.resultados}</td>
+            <td class="text-right">${c.nuevosContactos}</td>
+            <td class="text-right">${formatCurrency(c.costePorResultado)}</td>
+            <td class="text-right bold">${formatCurrency(c.importeGastado)}</td>
+          </tr>
+        `).join('')}
+        <tr style="background-color: #dbeafe; font-weight: bold;">
+          <td>TOTAL</td>
+          <td class="text-right">${formatNumber(totalesPeriodo1.visualizaciones)}</td>
+          <td class="text-right">${formatNumber(totalesPeriodo1.alcance)}</td>
+          <td class="text-right">${totalesPeriodo1.clics}</td>
+          <td class="text-right">${totalesPeriodo1.resultados}</td>
+          <td class="text-right">${totalesPeriodo1.contactos}</td>
+          <td class="text-right">${formatCurrency(metricasP1.costePorResultado)}</td>
+          <td class="text-right">${formatCurrency(totalesPeriodo1.gasto)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📋 Detalle Período 2</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Campaña</th>
+          <th class="text-right">Visualiz.</th>
+          <th class="text-right">Alcance</th>
+          <th class="text-right">Clics</th>
+          <th class="text-right">Resultados</th>
+          <th class="text-right">Contactos</th>
+          <th class="text-right">CPR</th>
+          <th class="text-right">Gasto</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${periodo2Data.map(c => `
+          <tr>
+            <td class="bold">${c.nombre}</td>
+            <td class="text-right">${formatNumber(c.visualizaciones)}</td>
+            <td class="text-right">${formatNumber(c.alcance)}</td>
+            <td class="text-right">${c.clicsEnlace}</td>
+            <td class="text-right">${c.resultados}</td>
+            <td class="text-right">${c.nuevosContactos}</td>
+            <td class="text-right">${formatCurrency(c.costePorResultado)}</td>
+            <td class="text-right bold">${formatCurrency(c.importeGastado)}</td>
+          </tr>
+        `).join('')}
+        <tr style="background-color: #dbeafe; font-weight: bold;">
+          <td>TOTAL</td>
+          <td class="text-right">${formatNumber(totalesPeriodo2.visualizaciones)}</td>
+          <td class="text-right">${formatNumber(totalesPeriodo2.alcance)}</td>
+          <td class="text-right">${totalesPeriodo2.clics}</td>
+          <td class="text-right">${totalesPeriodo2.resultados}</td>
+          <td class="text-right">${totalesPeriodo2.contactos}</td>
+          <td class="text-right">${formatCurrency(metricasP2.costePorResultado)}</td>
+          <td class="text-right">${formatCurrency(totalesPeriodo2.gasto)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <div class="section-title">📊 Análisis de Rendimiento por Campaña</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Campaña</th>
+          <th class="text-right">CPR P1</th>
+          <th class="text-right">CPR P2</th>
+          <th class="text-right">Mejora CPR</th>
+          <th class="text-right">Result. P1</th>
+          <th class="text-right">Result. P2</th>
+          <th class="text-right">Mejora Res.</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${(() => {
+          const campanas = [...new Set([...periodo1Data.map(c => c.nombre), ...periodo2Data.map(c => c.nombre)])];
+          return campanas.map(nombre => {
+            const p1 = periodo1Data.find(c => c.nombre === nombre);
+            const p2 = periodo2Data.find(c => c.nombre === nombre);
+            if (!p1 || !p2) return '';
+            const mejoraCPR = calcularVariacion(p2.costePorResultado, p1.costePorResultado);
+            const mejoraRes = calcularVariacion(p2.resultados, p1.resultados);
+            return `
+              <tr>
+                <td class="bold">${nombre}</td>
+                <td class="text-right">${formatCurrency(p1.costePorResultado)}</td>
+                <td class="text-right">${formatCurrency(p2.costePorResultado)}</td>
+                <td class="text-right ${parseFloat(mejoraCPR) < 0 ? 'positive' : 'negative'}">${mejoraCPR}%</td>
+                <td class="text-right">${p1.resultados}</td>
+                <td class="text-right">${p2.resultados}</td>
+                <td class="text-right ${parseFloat(mejoraRes) > 0 ? 'positive' : 'negative'}">${mejoraRes}%</td>
+              </tr>
+            `;
+          }).join('');
+        })()}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer">
+    <p><strong>Reporte Comparativo de Campañas Meta Ads</strong></p>
+    <p>Para guardar como PDF: Archivo > Imprimir > Guardar como PDF</p>
+    <p>© ${new Date().getFullYear()} - Generado automáticamente</p>
+  </div>
+</body>
+</html>`;
+
+      const blob = new Blob([contenidoHTML], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `reporte_campanas_meta_${new Date().toISOString().split('T')[0]}.html`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      
+      alert('✅ Reporte descargado exitosamente!\n\n📋 Abre el archivo HTML y presiona Ctrl+P (Cmd+P en Mac) para guardar como PDF');
+      
+    } catch (error) {
+      console.error('Error:', error);
+      alert('❌ Error al generar el reporte. Por favor intenta de nuevo.');
+    }
+  };
+
+  const datosGraficoComparacion = useMemo(() => [
+    { metrica: 'Visualizaciones', 'Período 1': totalesPeriodo1.visualizaciones, 'Período 2': totalesPeriodo2.visualizaciones },
+    { metrica: 'Alcance', 'Período 1': totalesPeriodo1.alcance, 'Período 2': totalesPeriodo2.alcance },
+    { metrica: 'Clics', 'Período 1': totalesPeriodo1.clics, 'Período 2': totalesPeriodo2.clics },
+    { metrica: 'Resultados', 'Período 1': totalesPeriodo1.resultados, 'Período 2': totalesPeriodo2.resultados },
+    { metrica: 'Contactos', 'Período 1': totalesPeriodo1.contactos, 'Período 2': totalesPeriodo2.contactos }
+  ], [totalesPeriodo1, totalesPeriodo2]);
+
+  const todasCampanas = useMemo(() => [
+    ...periodo1Data.map(c => ({...c, periodo: 'Período 1'})),
+    ...periodo2Data.map(c => ({...c, periodo: 'Período 2'}))
+  ], [periodo1Data, periodo2Data]);
+
+  const hayDatos = periodo1Data.length > 0 || periodo2Data.length > 0;
+
+  const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981'];
+
+  const MetricCard = ({ title, value1, value2, icon: Icon, format = 'number', invertColors = false }) => {
+    const variacion = calcularVariacion(value2, value1);
+    const isPositive = parseFloat(variacion) > 0;
+    const showPositive = invertColors ? !isPositive : isPositive;
+    
+    return (
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 hover:shadow-xl transition-shadow">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-medium text-gray-600">{title}</h3>
+          <Icon className="w-5 h-5 text-blue-500" />
+        </div>
+        <div className="space-y-3">
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Período 1</div>
+            <div className="text-2xl font-bold text-gray-800">
+              {format === 'currency' ? formatCurrency(value1) : 
+               format === 'percent' ? formatPercent(value1) : formatNumber(value1)}
+            </div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Período 2</div>
+            <div className="text-2xl font-bold text-gray-800">
+              {format === 'currency' ? formatCurrency(value2) : 
+               format === 'percent' ? formatPercent(value2) : formatNumber(value2)}
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 text-sm font-semibold ${showPositive ? 'text-green-600' : 'text-red-600'}`}>
+            {showPositive ? <ArrowUpCircle className="w-4 h-4" /> : <ArrowDownCircle className="w-4 h-4" />}
+            <span>{Math.abs(parseFloat(variacion))}% {showPositive ? 'mejora' : 'baja'}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 p-8">
+      <style>{`
+        @media print {
+          body { 
+            margin: 0;
+            background: white !important;
+          }
+          .no-print { 
+            display: none !important; 
+          }
+          .print-break { 
+            page-break-after: always; 
+          }
+          .bg-gradient-to-br {
+            background: white !important;
+          }
+          * {
+            print-color-adjust: exact;
+            -webkit-print-color-adjust: exact;
+          }
+          @page { 
+            margin: 1.5cm;
+            size: A4;
+          }
+          table {
+            page-break-inside: avoid;
+          }
+          .bg-white {
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
+      
+      <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8 no-print">
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800 flex items-center">
+              <Target className="w-8 h-8 mr-3 text-blue-600" />
+              Comparador de Campañas Meta Ads
+            </h1>
+            <p className="text-gray-600 mt-2">Sube tus archivos CSV para comparar períodos</p>
+          </div>
+          {hayDatos && (
+            <div className="flex gap-2">
+              <button
+                onClick={imprimirPDF}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-red-600 to-pink-600 text-white rounded-lg hover:from-red-700 hover:to-pink-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                <Download className="w-5 h-5" />
+                Imprimir/PDF
+              </button>
+              <button
+                onClick={descargarReportePDF}
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                <Download className="w-5 h-5" />
+                Descargar HTML
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Zona de carga de archivos */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 no-print">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 p-8 hover:border-blue-500 transition-colors">
+          <div className="text-center">
+            <Upload className="w-12 h-12 mx-auto mb-4 text-blue-500" />
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Período 1</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {periodo1Data.length > 0 ? `${periodo1Data.length} campañas cargadas` : 'Sube archivo CSV del primer período'}
+            </p>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => handleFileUpload(e, 1)}
+              className="hidden"
+              id="file-periodo-1"
+            />
+            <label
+              htmlFor="file-periodo-1"
+              className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 transition-colors"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Seleccionar archivo
+            </label>
+            {periodo1Data.length > 0 && (
+              <button
+                onClick={() => limpiarDatos(1)}
+                className="ml-2 inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Limpiar
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow-lg border-2 border-dashed border-gray-300 p-8 hover:border-purple-500 transition-colors">
+          <div className="text-center">
+            <Upload className="w-12 h-12 mx-auto mb-4 text-purple-500" />
+            <h3 className="text-lg font-semibold text-gray-800 mb-2">Período 2</h3>
+            <p className="text-sm text-gray-600 mb-4">
+              {periodo2Data.length > 0 ? `${periodo2Data.length} campañas cargadas` : 'Sube archivo CSV del segundo período'}
+            </p>
+            <input
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(e) => handleFileUpload(e, 2)}
+              className="hidden"
+              id="file-periodo-2"
+            />
+            <label
+              htmlFor="file-periodo-2"
+              className="inline-flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg cursor-pointer hover:bg-purple-700 transition-colors"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Seleccionar archivo
+            </label>
+            {periodo2Data.length > 0 && (
+              <button
+                onClick={() => limpiarDatos(2)}
+                className="ml-2 inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Limpiar
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Instrucciones */}
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-8 no-print">
+        <h3 className="font-semibold text-blue-900 mb-2">📋 Formato del CSV</h3>
+        <p className="text-sm text-blue-800 mb-3">Tu archivo CSV debe tener estas columnas:</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-blue-700">
+          <div>• Nombre de la campaña</div>
+          <div>• Visualizaciones</div>
+          <div>• Alcance</div>
+          <div>• Clics en el enlace</div>
+          <div>• Tipo de resultado</div>
+          <div>• Resultados</div>
+          <div>• Nuevos contactos</div>
+          <div>• Objetivo</div>
+          <div>• Coste por resultado</div>
+          <div>• Importe gastado</div>
+          <div>• Inicio del informe</div>
+          <div>• Fin del informe</div>
+        </div>
+      </div>
+
+      {loading && (
+        <div className="text-center py-8 no-print">
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <p className="mt-4 text-gray-600">Procesando datos...</p>
+        </div>
+      )}
+
+      {!hayDatos && !loading && (
+        <div className="text-center py-16 no-print">
+          <Target className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+          <h3 className="text-xl font-semibold text-gray-700 mb-2">No hay datos cargados</h3>
+          <p className="text-gray-600">Sube archivos CSV para comenzar el análisis</p>
+        </div>
+      )}
+
+      {hayDatos && !loading && (
+        <>
+          {/* Título para impresión */}
+          <div className="hidden print:block text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-800">📊 Reporte Comparativo - Campañas Meta Ads</h1>
+            <p className="text-gray-600 mt-2">Generado el {new Date().toLocaleDateString('es-MX')}</p>
+          </div>
+
+          {periodo1Data.length > 0 && periodo2Data.length > 0 && (
+            <>
+              <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl shadow-lg p-6 mb-8 text-white">
+                <h2 className="text-xl font-bold mb-4">📊 Resumen Ejecutivo</h2>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <div className="text-sm opacity-90">Cambio en Gasto</div>
+                    <div className="text-3xl font-bold">
+                      {parseFloat(calcularVariacion(totalesPeriodo2.gasto, totalesPeriodo1.gasto)) > 0 ? '+' : ''}
+                      {calcularVariacion(totalesPeriodo2.gasto, totalesPeriodo1.gasto)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm opacity-90">Cambio en Resultados</div>
+                    <div className="text-3xl font-bold">
+                      {parseFloat(calcularVariacion(totalesPeriodo2.resultados, totalesPeriodo1.resultados)) > 0 ? '+' : ''}
+                      {calcularVariacion(totalesPeriodo2.resultados, totalesPeriodo1.resultados)}%
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm opacity-90">Cambio en Eficiencia</div>
+                    <div className="text-3xl font-bold">
+                      {parseFloat(calcularVariacion(metricasP2.costePorResultado, metricasP1.costePorResultado)) > 0 ? '+' : ''}
+                      {calcularVariacion(metricasP2.costePorResultado, metricasP1.costePorResultado)}%
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                <MetricCard 
+                  title="💰 Gasto Total"
+                  value1={totalesPeriodo1.gasto}
+                  value2={totalesPeriodo2.gasto}
+                  icon={DollarSign}
+                  format="currency"
+                />
+                <MetricCard 
+                  title="🎯 Resultados"
+                  value1={totalesPeriodo1.resultados}
+                  value2={totalesPeriodo2.resultados}
+                  icon={Target}
+                />
+                <MetricCard 
+                  title="💬 Nuevos Contactos"
+                  value1={totalesPeriodo1.contactos}
+                  value2={totalesPeriodo2.contactos}
+                  icon={MessageCircle}
+                />
+                <MetricCard 
+                  title="👁️ Visualizaciones"
+                  value1={totalesPeriodo1.visualizaciones}
+                  value2={totalesPeriodo2.visualizaciones}
+                  icon={Eye}
+                />
+                <MetricCard 
+                  title="👥 Alcance"
+                  value1={totalesPeriodo1.alcance}
+                  value2={totalesPeriodo2.alcance}
+                  icon={Users}
+                />
+                <MetricCard 
+                  title="🖱️ Clics"
+                  value1={totalesPeriodo1.clics}
+                  value2={totalesPeriodo2.clics}
+                  icon={MousePointerClick}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <MetricCard 
+                  title="📉 Coste por Resultado"
+                  value1={metricasP1.costePorResultado}
+                  value2={metricasP2.costePorResultado}
+                  icon={DollarSign}
+                  format="currency"
+                  invertColors={true}
+                />
+                <MetricCard 
+                  title="📊 CTR"
+                  value1={metricasP1.ctr}
+                  value2={metricasP2.ctr}
+                  icon={MousePointerClick}
+                  format="percent"
+                />
+                <MetricCard 
+                  title="✅ Tasa de Conversión"
+                  value1={metricasP1.tasaConversion}
+                  value2={metricasP2.tasaConversion}
+                  icon={Target}
+                  format="percent"
+                />
+              </div>
+
+              <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
+                <h2 className="text-xl font-semibold text-gray-800 mb-6">📈 Comparación de Métricas</h2>
+                <ResponsiveContainer width="100%" height={400}>
+                  <BarChart data={datosGraficoComparacion}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                    <XAxis dataKey="metrica" stroke="#6b7280" />
+                    <YAxis stroke="#6b7280" />
+                    <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                    <Legend />
+                    <Bar dataKey="Período 1" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                    <Bar dataKey="Período 2" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-6">💵 Coste por Resultado</h2>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={todasCampanas} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis type="number" stroke="#6b7280" />
+                      <YAxis dataKey="nombre" type="category" width={100} stroke="#6b7280" />
+                      <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                      <Bar dataKey="costePorResultado" fill="#22c55e" radius={[0, 8, 8, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+                  <h2 className="text-xl font-semibold text-gray-800 mb-6">🎯 Resultados por Campaña</h2>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={todasCampanas}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                      <XAxis dataKey="nombre" stroke="#6b7280" angle={-45} textAnchor="end" height={100} />
+                      <YAxis stroke="#6b7280" />
+                      <Tooltip contentStyle={{ backgroundColor: '#fff', border: '1px solid #e5e7eb', borderRadius: '8px' }} />
+                      <Bar dataKey="resultados" fill="#8b5cf6" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </>
+          )}
+
+          {periodo1Data.length > 0 && (
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6 mb-8">
+              <h2 className="text-xl font-semibold text-gray-800 mb-6">📋 Detalle Período 1</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200 bg-blue-50">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Campaña</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Visualizaciones</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Alcance</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Clics</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Resultados</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Contactos</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">CPR</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Gasto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {periodo1Data.map((campana, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 font-medium text-gray-800">{campana.nombre}</td>
+                        <td className="py-3 px-4 text-right">{formatNumber(campana.visualizaciones)}</td>
+                        <td className="py-3 px-4 text-right">{formatNumber(campana.alcance)}</td>
+                        <td className="py-3 px-4 text-right">{formatNumber(campana.clicsEnlace)}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-blue-600">{campana.resultados}</td>
+                        <td className="py-3 px-4 text-right">{campana.nuevosContactos}</td>
+                        <td className="py-3 px-4 text-right">{formatCurrency(campana.costePorResultado)}</td>
+                        <td className="py-3 px-4 text-right font-semibold">{formatCurrency(campana.importeGastado)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-blue-300 bg-blue-100 font-bold">
+                      <td className="py-3 px-4 text-gray-800">TOTAL</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{formatNumber(totalesPeriodo1.visualizaciones)}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{formatNumber(totalesPeriodo1.alcance)}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{formatNumber(totalesPeriodo1.clics)}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{totalesPeriodo1.resultados}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{totalesPeriodo1.contactos}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{formatCurrency(metricasP1.costePorResultado)}</td>
+                      <td className="py-3 px-4 text-right text-blue-700">{formatCurrency(totalesPeriodo1.gasto)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {periodo2Data.length > 0 && (
+            <div className="bg-white rounded-xl shadow-lg border border-gray-200 p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-6">📋 Detalle Período 2</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b-2 border-gray-200 bg-purple-50">
+                      <th className="text-left py-3 px-4 font-semibold text-gray-700">Campaña</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Visualizaciones</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Alcance</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Clics</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Resultados</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Contactos</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">CPR</th>
+                      <th className="text-right py-3 px-4 font-semibold text-gray-700">Gasto</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {periodo2Data.map((campana, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="py-3 px-4 font-medium text-gray-800">{campana.nombre}</td>
+                        <td className="py-3 px-4 text-right">{formatNumber(campana.visualizaciones)}</td>
+                        <td className="py-3 px-4 text-right">{formatNumber(campana.alcance)}</td>
+                        <td className="py-3 px-4 text-right">{formatNumber(campana.clicsEnlace)}</td>
+                        <td className="py-3 px-4 text-right font-semibold text-purple-600">{campana.resultados}</td>
+                        <td className="py-3 px-4 text-right">{campana.nuevosContactos}</td>
+                        <td className="py-3 px-4 text-right">{formatCurrency(campana.costePorResultado)}</td>
+                        <td className="py-3 px-4 text-right font-semibold">{formatCurrency(campana.importeGastado)}</td>
+                      </tr>
+                    ))}
+                    <tr className="border-t-2 border-purple-300 bg-purple-100 font-bold">
+                      <td className="py-3 px-4 text-gray-800">TOTAL</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{formatNumber(totalesPeriodo2.visualizaciones)}</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{formatNumber(totalesPeriodo2.alcance)}</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{formatNumber(totalesPeriodo2.clics)}</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{totalesPeriodo2.resultados}</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{totalesPeriodo2.contactos}</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{formatCurrency(metricasP2.costePorResultado)}</td>
+                      <td className="py-3 px-4 text-right text-purple-700">{formatCurrency(totalesPeriodo2.gasto)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default ComparadorCampanasMeta;
